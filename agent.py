@@ -138,6 +138,50 @@ def run_task(task):
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "sort_contacts",
+                "description": "Sort a JSON array of contacts in a file based on specified fields and order",
+                "parameters":{
+                    "type": "object",
+                    "properties": {
+                        "input_file": {
+                            "type": "string",
+                            "description": "Path to the JSON file containing the array of contacts."
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path to the file to write the sorted JSON array to."
+                        },
+                        "sort_fields": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": """
+                            Array of the field names to sort by (e.g., ['lastname', 'first_name']).
+                            The order of fields in this array dertermines the sorting priority.
+                            """
+                        },
+                        "sort_direction": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["asc", "desc"]
+                            },
+                            "description": """
+                            Array of sort directions 
+                            ('asc' for ascending, 'desc' for descending)
+                            corresponding to the sort_fields. 
+                            Must be the same length as sort_fields.
+                            """
+                        }
+                    },
+                    "required": ["input_file", "output_file", "sort_fields", "sort_direction"]
+                }
+            }
+        }
     ]
 
     llm_response = call_llm(task, tools)
@@ -170,8 +214,13 @@ def run_task(task):
         elif function_name == "count_dates":
             count_dates(**arguments)
             return f"Date counting completed. Result written to {arguments.get('output_file')}"
+        elif function_name == "sort_contacts":
+            sort_contacts(**arguments)
+            return f"Contacts sorted and written to {arguments.get('output_file')}"
         else:
             raise ValueError(f"Unknown function name: {function_name}")
+    except ValueError as e:
+        raise ValueError(f"Error executing function: {e}")
     except Exception as e:
         raise Exception(f"Error executing function: {e}")
 
@@ -191,7 +240,7 @@ def online_script_runner(url, email, package):
         subprocess.run(command, shell=True)
         return "Script executed successfully"
     except subprocess.CalledProcessError as e:
-        raise Exception(f"Error executing script: {e.stderr}")
+        raise ValueError(f"Error executing script: {e.stderr}")
 
 
 def write_file(file_path, content):
@@ -203,7 +252,6 @@ def write_file(file_path, content):
 
     with open(file_path, "w") as file:
         file.write(content)
-
 
 def format_file_with_prettier(file_path, prettier_version):
     logging.info(
@@ -222,7 +270,7 @@ def format_file_with_prettier(file_path, prettier_version):
             npm_installed = False
 
         if not npm_installed:
-            raise Exception(
+            raise ValueError(
                 "npm is not installed. Please install npm in the Docker image."
             )
 
@@ -245,7 +293,6 @@ def format_file_with_prettier(file_path, prettier_version):
 
         # Install Prettier only if it's not already installed or the version is different
         if not already_installed:
-            print(f"Installing prettier@{prettier_version}...")
             subprocess.run(
                 ["npm", "install", f"prettier@{prettier_version}"], check=True
             )
@@ -257,19 +304,24 @@ def format_file_with_prettier(file_path, prettier_version):
 
         return
     except subprocess.CalledProcessError as e:
-        raise Exception(f"Error formatting file: {e}")
+        raise ValueError(f"Error formatting file: {e}")
+
+def validate_data_paths(input_file: str, output_file: str):
+    
+    input_file = input_file.strip("/")
+    output_file = output_file.strip("/")
+
+    if not input_file.startswith("data/") or not output_file.startswith("data/"):
+        raise ValueError("File paths must be within the 'data' directory")
+
+    return input_file, output_file
 
 
 def count_dates(input_file, output_file, date_part, value_to_count):
     logging.info(
         f"count dates called with input_file: {input_file}, output_file: {output_file}, date_part: {date_part}, value_to_count: {value_to_count}"
     )
-    input_file = input_file.strip("/")
-    output_file = output_file.strip("/")
-
-    if not input_file.startswith("data/") or not output_file.startswith("data/"):
-        raise ValueError("File paths must be within data directory")
-
+    input_file, output_file = validate_data_paths(input_file, output_file)
     try:
         with open(input_file, "r") as f:
             dates = f.readlines()
@@ -295,11 +347,50 @@ def count_dates(input_file, output_file, date_part, value_to_count):
                     count += 1
             else:
                 raise ValueError(f"Invalid date_part: {date_part}")
-
             with open(output_file, "w") as f:
                 f.write(str(count))
 
     except FileNotFoundError:
         raise FileNotFoundError(f"File not found: {input_file}")
     except Exception as e:
-        raise Exception(f"Error counting dates: {e}")
+        raise ValueError(f"Error counting dates: {e}")
+
+def sort_contacts(input_file, output_file, sort_fields, sort_direction):
+    logging.info(
+        f"sort contacts called with input_file: {input_file}, output_file: {output_file}, sort_fields: {sort_fields}, sort_direction: {sort_direction}"
+    )
+    input_file, output_file = validate_data_paths(input_file, output_file)
+    
+    if len(sort_fields) != len(sort_direction):
+        raise ValueError("sort_fields and sort_direction must have the same length")
+    
+    try:
+        with open(input_file, "r") as f:
+            contacts = json.load(f)
+            
+        if not isinstance(contacts, list):
+            raise ValueError("Input file is not a valid JSON array")
+        
+        sort_criteria = []
+        for field, direction in zip(sort_fields, sort_direction):
+            reverse = (direction.lower() == "desc")
+            sort_criteria.append((field, reverse))
+        
+        def mutlti_sort(contact):
+            return tuple(contact.get(field) for field, _ in sort_criteria)
+        
+        contacts.sort(key=mutlti_sort, reverse=False)
+        
+        for i, (field, reverse) in enumerate(sort_criteria):
+            if reverse:
+                contacts = sorted(contacts, key=lambda k: k.get(field, None), reverse=True)
+            
+        with open(output_file, "w") as f:
+            json.dump(contacts, f)
+        
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File not found: {input_file}")
+    except json.JSONDecodeError:
+        raise ValueError(f"Invalid JSON format in input file: {input_file}")
+    except Exception as e:
+        raise ValueError(f"Error sorting contacts: {e}")

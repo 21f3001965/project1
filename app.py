@@ -34,6 +34,8 @@ def run(task: str):
         return Response(content=result, status_code=200)
     except ValueError as e:
         return Response(content=str(e), status_code=400)
+    except FileNotFoundError as e:
+        return Response(content=str(e), status_code=400)
     except Exception as e:
         return Response(content=str(e), status_code=500)
 
