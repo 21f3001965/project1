@@ -5,10 +5,10 @@ from helper import (
     online_script_runner,
     write_file,
     format_file_with_prettier,
-    validate_data_paths,
     count_dates,
     sort_contacts,
     extract_log_info,
+    extract_markdown_headers,
 )
 
 
@@ -299,6 +299,52 @@ def run_task(task):
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "extract_markdown_headers",
+                "description": """
+                    Finds all Markdown (.md) files in a directory, 
+                    extracts specified occurrences of headers of a specific level from each file, 
+                    and creates an index file mapping filenames to their titles.
+                """,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "md_directory": {
+                            "type": "string",
+                            "description": "Path to the directory containing the .md files.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path to the output file to save the processed content.",\
+                        },
+                        "header_level": {
+                            "type": "string",
+                            "enum": ["h1", "h2", "h3", "h4", "h5", "h6"],
+                            "description": """ 
+                                The level of the headers to extract: 'h1', 'h2', 'h3', 'h4', 'h5', or 'h6'.
+                            """
+                        },
+                        "header_occurrence": {
+                            "type": "string",
+                            "enum": ["first", "nth", "last", "all"],
+                            "description": """ 
+                                Which occurrence of the header to extract: 'first', 'last', 'all', or 'nth'.
+                            """
+                        },
+                        "n_value": {
+                            "type": "string",
+                            "description": """
+                                (Optional) the n value if header occurence is nth.
+                            """
+                        }
+                    },
+                    "required": ["docs_directory", "header_level", "header_occurrence", "output_file"]
+                }
+            }
+        },
+        
     ]
 
     llm_response = call_llm(task, tools)
@@ -337,6 +383,9 @@ def run_task(task):
         elif function_name == "extract_log_info":
             extract_log_info(**arguments)
             return f"Log info extracted and written to {arguments.get('output_file')}"
+        elif function_name == "extract_markdown_headers":
+            extract_markdown_headers(**arguments)
+            return f"Markdown processing completed. Result written to {arguments.get('output_file')}"
         else:
             raise ValueError(f"Unknown function name: {function_name}")
     except ValueError as e:

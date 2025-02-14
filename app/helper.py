@@ -3,10 +3,19 @@ import os
 import logging
 import datetime
 from dateutil.parser import parse
-from utils import read_file
+from utils import (
+    read_file,
+    extract_text_from_csv,
+    extract_text_from_json,
+    extract_text_from_word,
+    extract_text_from_excel
+)
 import glob
 import json
 import re
+import markdown2
+from bs4 import BeautifulSoup
+
 
 def online_script_runner(url, email, package):
     logging.info(
@@ -107,8 +116,18 @@ def count_dates(input_file, output_file, date_part, value_to_count):
     )
     input_file, output_file = validate_data_paths(input_file, output_file)
     try:
-        with open(input_file, "r") as f:
-            dates = f.readlines()
+        file_extension = os.path.splitext(input_file)[1][1:]
+        if file_extension == "csv":
+            dates = extract_text_from_csv(input_file)
+        elif file_extension == "json":
+            dates = extract_text_from_json(input_file)
+        elif file_extension == "docx":
+            dates = extract_text_from_word(input_file)
+        elif file_extension == "xlsx" or file_extension == "xls":
+            dates = extract_text_from_excel(input_file)
+        else:
+            with open(input_file, "r") as f:
+                dates = f.readlines()
 
         count = 0
         for date_str in dates:
@@ -202,7 +221,7 @@ def extract_log_info(
     log_directory, output_file = validate_data_paths(log_directory, output_file)
 
     try:
-        files = glob.glob(os.path.join(log_directory, "*.log"))  # Get all .log files
+        files = glob.glob(os.path.join(log_directory, "**", "*.log"), recursive=True)
 
         # Date Filtering
         if date_filter_type != "none":
@@ -262,7 +281,7 @@ def extract_log_info(
                 files = files[:num_files]
             except ValueError:
                 logging.info(f"Invalid num_files value: {num_files}, using all files")
-                
+
         output_lines = []
         for file_path in files:
             try:
@@ -290,9 +309,7 @@ def extract_log_info(
                             else ""
                         )
                     except (ValueError, IndexError):
-                        raise ValueError(
-                            f"Invalid line number: {line_number}"
-                        )
+                        raise ValueError(f"Invalid line number: {line_number}")
                 elif extraction_type == "lines_range":
                     if lines_range_start is None or lines_range_end is None:
                         raise ValueError(
@@ -344,3 +361,43 @@ def extract_log_info(
         raise FileNotFoundError(f"Directory not found: {log_directory}")
     except Exception as e:
         raise ValueError(f"Error extracting log info: {e}")
+
+def extract_markdown_headers(md_directory, header_level, header_occurrence, output_file, n_value = None):
+    logging.info(
+        f"extract_markdown_headers called with md_directory: {md_directory}, header_level: {header_level}, header_occurrence: {header_occurrence}, output_file: {output_file}, n_value: {n_value}"
+    )
+    md_directory, output_file = validate_data_paths(md_directory, output_file)
+
+    try:
+        index_data ={}
+        files = glob.glob(os.path.join(md_directory, "**", "*.md"), recursive=True)
+        
+        for file in files:
+            with open(file, "r") as f:
+                md_content = f.read()
+        
+            html = markdown2.markdown(md_content)
+            soup = BeautifulSoup(html, "html.parser")
+            
+            headers = soup.find_all(f"{header_level}")
+            
+            if header_occurrence == "first":
+                title = headers[0].get_text().strip() if headers else ""
+            elif header_occurrence == "last":
+                title = headers[-1].get_text().strip() if headers else ""
+            elif header_occurrence == "n":
+                if n_value is not None:
+                    raise ValueError("N value must be given if header_occurance is nth")
+                title = headers[n_value].get_text().strip() if len(headers) >= n_value else ""
+            elif header_occurrence == "all":
+                title = " | ".join(header.get_text().strip() for header in headers) if headers else ""
+            else:
+                raise ValueError(f"Invalid header_occurrence: {header_occurrence}")
+            
+            filename = os.path.relpath(file, md_directory)
+            index_data[filename] = title
+        with open(output_file, "w") as outfile:
+            json.dump(index_data, outfile, indent=4)
+    
+    except Exception as e:
+        raise ValueError(f"Error extracting markdown headers: {e}")            

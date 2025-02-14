@@ -4,7 +4,12 @@
 #     "fastapi",
 #     "uvicorn",
 #     "httpx",
-#     "python-dateutil"
+#     "python-dateutil",
+#     "pandas",
+#     "python-docx",
+#     "markdown2",
+#     "beautifulsoup4",
+#
 # ]
 # ///
 
