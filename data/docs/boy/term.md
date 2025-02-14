@@ -1,2 +1,0 @@
-
-# Test light build gun.
