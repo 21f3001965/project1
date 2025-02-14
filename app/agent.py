@@ -1,10 +1,16 @@
-import subprocess
 from utils import call_llm, read_file
 import json
-import os
 import logging
-import datetime
-from dateutil.parser import parse
+from helper import (
+    online_script_runner,
+    write_file,
+    format_file_with_prettier,
+    validate_data_paths,
+    count_dates,
+    sort_contacts,
+    extract_log_info,
+)
+
 
 logging.basicConfig(
     filename="app.log",
@@ -143,45 +149,156 @@ def run_task(task):
             "function": {
                 "name": "sort_contacts",
                 "description": "Sort a JSON array of contacts in a file based on specified fields and order",
-                "parameters":{
+                "parameters": {
                     "type": "object",
                     "properties": {
                         "input_file": {
                             "type": "string",
-                            "description": "Path to the JSON file containing the array of contacts."
+                            "description": "Path to the JSON file containing the array of contacts.",
                         },
                         "output_file": {
                             "type": "string",
-                            "description": "Path to the file to write the sorted JSON array to."
+                            "description": "Path to the file to write the sorted JSON array to.",
                         },
                         "sort_fields": {
                             "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
+                            "items": {"type": "string"},
                             "description": """
                             Array of the field names to sort by (e.g., ['lastname', 'first_name']).
                             The order of fields in this array dertermines the sorting priority.
-                            """
+                            """,
                         },
                         "sort_direction": {
                             "type": "array",
-                            "items": {
-                                "type": "string",
-                                "enum": ["asc", "desc"]
-                            },
+                            "items": {"type": "string", "enum": ["asc", "desc"]},
                             "description": """
                             Array of sort directions 
                             ('asc' for ascending, 'desc' for descending)
                             corresponding to the sort_fields. 
                             Must be the same length as sort_fields.
-                            """
-                        }
+                            """,
+                        },
                     },
-                    "required": ["input_file", "output_file", "sort_fields", "sort_direction"]
-                }
-            }
-        }
+                    "required": [
+                        "input_file",
+                        "output_file",
+                        "sort_fields",
+                        "sort_direction",
+                    ],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "extract_log_info",
+                "description": """"Extracts information from .log files based on various criteria, writing the extracted content to an output file.""",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "log_directory": {
+                            "type": "string",
+                            "description": "Path to the directory containing the .log files.",
+                        },
+                        "sort_order": {
+                            "type": "string",
+                            "enum": [
+                                "newest",
+                                "oldest",
+                                "name_asc",
+                                "name_desc",
+                                "none",
+                                "size_asc",
+                                "size_desc",
+                            ],
+                            "description": """How to sort the .log files before extraction. 
+                                'newest' is most recently modified first, 
+                                'oldest' is least recently modified first, 
+                                'name_asc' is alphabetical, 
+                                'name_desc' is reverse alphabetical, 
+                                'size_asc' is smallest first, 
+                                'size_desc' is largest first and 
+                                'none' indicates no sorting.
+                            """,
+                        },
+                        "date_filter_type": {
+                            "type": "string",
+                            "enum": ["before", "after", "on", "between", "none"],
+                            "description": """Filter .log files based on their modification date. 
+                                'before' for files modified before a certain date, 
+                                'after' for after a date, 
+                                'on' for a specific date, 
+                                'between' for a date range and
+                                'none' to extract from all files.
+                            """,
+                        },
+                        "date_filter_value": {
+                            "type": "string",
+                            "description": """
+                                The date or date range for filtering. 
+                                If date_filter_type is 'before', 'after', or 'on', provide a single date (YYYY-MM-DD). 
+                                If 'between', provide two dates separated by a comma (YYYY-MM-DD,YYYY-MM-DD). 
+                                Required when date_filter_type is not 'none'.
+                            """,
+                        },
+                        "num_files": {
+                            "type": "integer",
+                            "description": "(Optional) The number of .log files to process. If omitted, all log files are processed.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path to the file to write the extracted lines to.",
+                        },
+                        "extraction_type": {
+                            "type": "string",
+                            "enum": [
+                                "last",
+                                "first",
+                                "all",
+                                "line_number",
+                                "regex",
+                                "lines_range",
+                            ],
+                            "description": """
+                                What to extract from each .log file. 
+                                'first' is the first line, 
+                                'last' is the last line, 
+                                'all' means all lines joined, 
+                                'line_number' extracts a specific line, 
+                                'regex' extracts lines matching a pattern, 
+                                and 'lines_range' extracts a range of lines.
+                            """,
+                        },
+                        "line_number": {
+                            "type": "integer",
+                            "description": "(Optional) The line number to extract (1-based).  Required if extraction_type is 'line_number'.",
+                        },
+                        "lines_range_start": {
+                            "type": "integer",
+                            "description": """
+                                (Optional) The starting line number to extract (1-based). 
+                                Required if extraction_type is 'lines_range'.
+                            """,
+                        },
+                        "lines_range_end": {
+                            "type": "integer",
+                            "description": "(Optional) The ending line number to extract (1-based, inclusive). Required if extraction_type is 'lines_range'.",
+                        },
+                        "regex_pattern": {
+                            "type": "string",
+                            "description": "(Optional) The regular expression pattern to match lines.  Required if extraction_type is 'regex'.",
+                        },
+                    },
+                    "required": [
+                        "log_directory",
+                        "sort_order",
+                        "output_file",
+                        "extraction_type",
+                        "date_filter_type",
+                    ],
+                },
+            },
+        },
     ]
 
     llm_response = call_llm(task, tools)
@@ -217,180 +334,12 @@ def run_task(task):
         elif function_name == "sort_contacts":
             sort_contacts(**arguments)
             return f"Contacts sorted and written to {arguments.get('output_file')}"
+        elif function_name == "extract_log_info":
+            extract_log_info(**arguments)
+            return f"Log info extracted and written to {arguments.get('output_file')}"
         else:
             raise ValueError(f"Unknown function name: {function_name}")
     except ValueError as e:
         raise ValueError(f"Error executing function: {e}")
     except Exception as e:
         raise Exception(f"Error executing function: {e}")
-
-
-def online_script_runner(url, email, package):
-    logging.info(
-        f"online script runner called with url: {url}, email: {email}, package: {package}"
-    )
-    if (
-        package
-        and package != ""
-        and package not in subprocess.check_output(["pip", "freeze"]).decode("utf-8")
-    ):
-        subprocess.run(["pip", "install", package])
-    try:
-        command = f"uv run {url} {email} --root ./data"
-        subprocess.run(command, shell=True)
-        return "Script executed successfully"
-    except subprocess.CalledProcessError as e:
-        raise ValueError(f"Error executing script: {e.stderr}")
-
-
-def write_file(file_path, content):
-    logging.info(f"write file called with file_path: {file_path}, content: {content}")
-    if not file_path.startswith("/data/"):
-        raise ValueError("cannot write file outside of data directory")
-    if os.path.exists(file_path) and not content:
-        raise ValueError("Cannot delete file")
-
-    with open(file_path, "w") as file:
-        file.write(content)
-
-def format_file_with_prettier(file_path, prettier_version):
-    logging.info(
-        f"format file called with file_path: {file_path}, prettier_version: {prettier_version}"
-    )
-    file_path = file_path.strip("/")
-    if not file_path.startswith("data/"):
-        raise ValueError("cannot format file outside of data directory")
-
-    try:
-        # Check if npm is installed
-        try:
-            subprocess.run(["npm", "-v"], check=True, capture_output=True)
-            npm_installed = True
-        except FileNotFoundError:
-            npm_installed = False
-
-        if not npm_installed:
-            raise ValueError(
-                "npm is not installed. Please install npm in the Docker image."
-            )
-
-        # Check if prettier is already installed with the correct version
-        try:
-            result = subprocess.run(
-                ["npx", "prettier", "--version"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            installed_version = result.stdout.strip()
-            if installed_version == prettier_version:
-                logging.info("Prettier is already installed with the correct version.")
-                already_installed = True
-            else:
-                already_installed = False
-        except subprocess.CalledProcessError:
-            already_installed = False
-
-        # Install Prettier only if it's not already installed or the version is different
-        if not already_installed:
-            subprocess.run(
-                ["npm", "install", f"prettier@{prettier_version}"], check=True
-            )
-
-        # Format the file using Prettier
-        subprocess.run(
-            ["npx", f"prettier@{prettier_version}", "--write", file_path], check=True
-        )
-
-        return
-    except subprocess.CalledProcessError as e:
-        raise ValueError(f"Error formatting file: {e}")
-
-def validate_data_paths(input_file: str, output_file: str):
-    
-    input_file = input_file.strip("/")
-    output_file = output_file.strip("/")
-
-    if not input_file.startswith("data/") or not output_file.startswith("data/"):
-        raise ValueError("File paths must be within the 'data' directory")
-
-    return input_file, output_file
-
-
-def count_dates(input_file, output_file, date_part, value_to_count):
-    logging.info(
-        f"count dates called with input_file: {input_file}, output_file: {output_file}, date_part: {date_part}, value_to_count: {value_to_count}"
-    )
-    input_file, output_file = validate_data_paths(input_file, output_file)
-    try:
-        with open(input_file, "r") as f:
-            dates = f.readlines()
-
-        count = 0
-        for date_str in dates:
-            date_str = date_str.strip()
-            try:
-                date_obj = parse(date_str)
-
-            except ValueError:
-                logging.info(f"Skipping invalid date format: {date_str}")
-                continue
-
-            if date_part == "weekday":
-                if date_obj.strftime("%A").lower() == value_to_count.lower():
-                    count += 1
-            elif date_part == "date":
-                if date_obj.strftime("%Y-%m-%d") == value_to_count:
-                    count += 1
-            elif date_part == "month":
-                if date_obj.strftime("%B").lower() == value_to_count.lower():
-                    count += 1
-            else:
-                raise ValueError(f"Invalid date_part: {date_part}")
-            with open(output_file, "w") as f:
-                f.write(str(count))
-
-    except FileNotFoundError:
-        raise FileNotFoundError(f"File not found: {input_file}")
-    except Exception as e:
-        raise ValueError(f"Error counting dates: {e}")
-
-def sort_contacts(input_file, output_file, sort_fields, sort_direction):
-    logging.info(
-        f"sort contacts called with input_file: {input_file}, output_file: {output_file}, sort_fields: {sort_fields}, sort_direction: {sort_direction}"
-    )
-    input_file, output_file = validate_data_paths(input_file, output_file)
-    
-    if len(sort_fields) != len(sort_direction):
-        raise ValueError("sort_fields and sort_direction must have the same length")
-    
-    try:
-        with open(input_file, "r") as f:
-            contacts = json.load(f)
-            
-        if not isinstance(contacts, list):
-            raise ValueError("Input file is not a valid JSON array")
-        
-        sort_criteria = []
-        for field, direction in zip(sort_fields, sort_direction):
-            reverse = (direction.lower() == "desc")
-            sort_criteria.append((field, reverse))
-        
-        def mutlti_sort(contact):
-            return tuple(contact.get(field) for field, _ in sort_criteria)
-        
-        contacts.sort(key=mutlti_sort, reverse=False)
-        
-        for i, (field, reverse) in enumerate(sort_criteria):
-            if reverse:
-                contacts = sorted(contacts, key=lambda k: k.get(field, None), reverse=True)
-            
-        with open(output_file, "w") as f:
-            json.dump(contacts, f)
-        
-    except FileNotFoundError:
-        raise FileNotFoundError(f"File not found: {input_file}")
-    except json.JSONDecodeError:
-        raise ValueError(f"Invalid JSON format in input file: {input_file}")
-    except Exception as e:
-        raise ValueError(f"Error sorting contacts: {e}")
