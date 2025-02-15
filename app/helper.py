@@ -11,16 +11,21 @@ from utils import (
     extract_text_from_word,
     extract_text_from_excel,
     llm_process_image,
-    text_embedding_llm
+    text_embedding_llm,
 )
 import glob
 import json
 import re
-import markdown2 # type: ignore
-from bs4 import BeautifulSoup # type: ignore
+import markdown2  # type: ignore
+from bs4 import BeautifulSoup  # type: ignore
 import base64
 import numpy as np
+import sqlite3
+import duckdb
+import csv
+import io
 
+#A-1
 def online_script_runner(url, email, package):
     logging.info(
         f"online script runner called with url: {url}, email: {email}, package: {package}"
@@ -41,7 +46,7 @@ def online_script_runner(url, email, package):
 
 def write_file(file_path, content):
     logging.info(f"write file called with file_path: {file_path}, content: {content}")
-    if not file_path.startswith("/data/"):
+    if not file_path.startswith("data/"):
         raise ValueError("cannot write file outside of data directory")
     if os.path.exists(file_path) and not content:
         raise ValueError("Cannot delete file")
@@ -49,7 +54,7 @@ def write_file(file_path, content):
     with open(file_path, "w") as file:
         file.write(content)
 
-
+#A-2
 def format_file_with_prettier(file_path, prettier_version):
     logging.info(
         f"format file called with file_path: {file_path}, prettier_version: {prettier_version}"
@@ -113,7 +118,7 @@ def validate_data_paths(*paths):
         cleaned_paths.append(path)
     return cleaned_paths
 
-
+#A-3
 def count_dates(input_file, output_file, date_part, value_to_count):
     logging.info(
         f"count dates called with input_file: {input_file}, output_file: {output_file}, date_part: {date_part}, value_to_count: {value_to_count}"
@@ -154,15 +159,15 @@ def count_dates(input_file, output_file, date_part, value_to_count):
                     count += 1
             else:
                 raise ValueError(f"Invalid date_part: {date_part}")
-            with open(output_file, "w") as f:
-                f.write(str(count))
+
+        write_file(output_file, str(count))
 
     except FileNotFoundError:
         raise FileNotFoundError(f"File not found: {input_file}")
     except Exception as e:
         raise ValueError(f"Error counting dates: {e}")
 
-
+# A-4
 def sort_contacts(input_file, output_file, sort_fields, sort_direction):
     logging.info(
         f"sort contacts called with input_file: {input_file}, output_file: {output_file}, sort_fields: {sort_fields}, sort_direction: {sort_direction}"
@@ -194,9 +199,7 @@ def sort_contacts(input_file, output_file, sort_fields, sort_direction):
                 contacts = sorted(
                     contacts, key=lambda k: k.get(field, None), reverse=True
                 )
-
-        with open(output_file, "w") as f:
-            json.dump(contacts, f)
+        write_file(output_file, json.dumps(contacts))
 
     except FileNotFoundError:
         raise FileNotFoundError(f"File not found: {input_file}")
@@ -205,7 +208,7 @@ def sort_contacts(input_file, output_file, sort_fields, sort_direction):
     except Exception as e:
         raise ValueError(f"Error sorting contacts: {e}")
 
-
+#A-5
 def extract_log_info(
     log_directory,
     sort_order,
@@ -355,9 +358,7 @@ def extract_log_info(
             except Exception as e:
                 output_lines.append(f"Error reading {os.path.basename(file_path)}: {e}")
 
-        with open(output_file, "w") as outfile:
-            for line in output_lines:
-                outfile.write(line + "\n")
+        write_file(output_file, "\n".join(output_lines))
 
         print(f"Extracted information from {len(files)} files to {output_file}")
 
@@ -366,7 +367,7 @@ def extract_log_info(
     except Exception as e:
         raise ValueError(f"Error extracting log info: {e}")
 
-
+#A-6
 def extract_markdown_headers(
     md_directory, header_level, header_occurrence, output_file, n_value=None
 ):
@@ -411,13 +412,12 @@ def extract_markdown_headers(
 
             filename = os.path.relpath(file, md_directory)
             index_data[filename] = title
-        with open(output_file, "w") as outfile:
-            json.dump(index_data, outfile, indent=4)
+        write_file(output_file, json.dumps(index_data, indent=4))
 
     except Exception as e:
         raise ValueError(f"Error extracting markdown headers: {e}")
 
-
+#A-7
 def extract_information(input_file, output_file, extraction_instruction):
     logging.info(
         f"extract information called with input_file: {input_file}, output_file: {output_file}, extraction_instruction: {extraction_instruction}"
@@ -449,60 +449,61 @@ def extract_information(input_file, output_file, extraction_instruction):
                 llm_response["choices"][0]["message"]["tool_calls"][0]["function"][
                     "arguments"
                 ]
-            )["extracted_information"]
-            for i, data in enumerate(extract_data):
-                with open(output_file, "a") as f:
-                    f.write(" ".join(extract_data))
+            ).get("extracted_information", [])
+            write_file(output_file, "\n".join(extract_data))
         except Exception as e:
             raise Exception(f"Error calling llm: {e}")
     except Exception as e:
         raise ValueError(f"Error extracting information: {e}")
 
-
+#A-8
 def process_image(image_path, output_file, processing_instruction):
     logging.info(
         f"process image called with image_path: {image_path}, output_file: {output_file}, processing_instruction: {processing_instruction}"
     )
     image_path, output_file = validate_data_paths(image_path, output_file)
 
-    
     try:
         with open(image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
 
         general_instruction = f"Extract all readable text and numbers from this image.Provide the extracted content in a structured format."
- 
+
         try:
             image_extension = os.path.splitext(image_path)[1][1:]
             image_llm_response = llm_process_image(
                 encoded_string, image_extension, general_instruction
             )
             logging.info(image_llm_response)
-            extracted_data = image_llm_response['choices'][0]['message']['content']
-            
-            text_llm_response = llm_text_extraction(processing_instruction, extracted_data)
-            
+            extracted_data = image_llm_response["choices"][0]["message"]["content"]
+
+            text_llm_response = llm_text_extraction(
+                processing_instruction, extracted_data
+            )
+
             extract_data = json.loads(
                 text_llm_response["choices"][0]["message"]["tool_calls"][0]["function"][
                     "arguments"
                 ]
             )["extracted_information"]
-            for i, data in enumerate(extract_data):
-                with open(output_file, "a") as f:
-                    f.write(" ".join(extract_data))
+            write_file(output_file, " ".join(extract_data))
         except Exception as e:
             raise Exception(f"Error calling llm: {e}")
     except Exception as e:
         raise ValueError(f"Error processing image: {e}")
 
-def find_texts_with_embeddings(input_file, output_file, find_type, input_format, output_format):
+
+# A-9
+def find_texts_with_embeddings(
+    input_file, output_file, find_type, input_format, output_format
+):
     logging.info(
-     f"analyze text called with input_file: {input_file}, output_file: {output_file}, find_type: {find_type}, input_format: {input_format}, output_format: {output_format}"   
+        f"analyze text called with input_file: {input_file}, output_file: {output_file}, find_type: {find_type}, input_format: {input_format}, output_format: {output_format}"
     )
-    
+
     input_file, output_file = validate_data_paths(input_file, output_file)
-    
-    try:  
+
+    try:
         if input_format == "csv":
             texts = extract_text_from_csv(input_file)
         elif input_format == "space_separated":
@@ -511,29 +512,36 @@ def find_texts_with_embeddings(input_file, output_file, find_type, input_format,
         else:
             with open(input_file, "r") as f:
                 texts = [line.strip() for line in f.readlines()]
-        
+
         if len(texts) < 2:
             raise ValueError("Need at least two texts in the input file.")
-        
-        
+
         llm_response = text_embedding_llm(texts)
-        embeddings = np.array([np.array(embedding["embedding"]) for embedding in llm_response["data"]])
-        
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True) 
+        embeddings = np.array(
+            [np.array(embedding["embedding"]) for embedding in llm_response["data"]]
+        )
+
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         normalized_embeddings = embeddings / norms
         similarity_matrix = np.dot(normalized_embeddings, normalized_embeddings.T)
-        
-        np.fill_diagonal(similarity_matrix, -np.inf) # Ignore self-similarity
-        
+
+        np.fill_diagonal(similarity_matrix, -np.inf)  # Ignore self-similarity
+
         if find_type == "most_similar":
-               index = np.unravel_index(np.argmax(similarity_matrix), similarity_matrix.shape)
+            index = np.unravel_index(
+                np.argmax(similarity_matrix), similarity_matrix.shape
+            )
         elif find_type == "most_dissimilar":
-            index = np.unravel_index(np.argmin(similarity_matrix), similarity_matrix.shape)
+            index = np.unravel_index(
+                np.argmin(similarity_matrix), similarity_matrix.shape
+            )
         else:
-            raise ValueError("Invalid find_type. Use 'most_similar' or 'most_dissimilar'.")
-        
+            raise ValueError(
+                "Invalid find_type. Use 'most_similar' or 'most_dissimilar'."
+            )
+
         pairs = (texts[index[0]], texts[index[1]])
-        
+
         if output_format == "comma_separated":
             output_string = pairs[0] + "," + pairs[1]
         elif output_format == "one_per_line":
@@ -541,10 +549,80 @@ def find_texts_with_embeddings(input_file, output_file, find_type, input_format,
         elif output_format == "space_separated":
             output_string = pairs[0] + " " + pairs[1]
         else:
-            raise ValueError("Invalid output_format. Use 'comma_separated', 'one_per_line', or 'space_separated'.")
-        
-        with open(output_file, "w") as f:
-            f.write(output_string)
-        
+            raise ValueError(
+                "Invalid output_format. Use 'comma_separated', 'one_per_line', or 'space_separated'."
+            )
+
+        write_file(output_file, output_string)
+
     except Exception as e:
         raise ValueError(f"Error analyzing text: {e}")
+
+# A-10
+def sqlite_query(input_file, query):
+    try:
+        conn = sqlite3.connect(input_file)
+        cursor = conn.cursor()
+        cursor.execute(query)
+        if query.strip().upper().startswith("SELECT"):
+            results = cursor.fetchall()
+        else:
+            conn.commit()
+            results = None
+        cursor.close()
+        conn.close()
+        return results
+    except Exception as e:
+        raise ValueError(f"Error querying database: {e}")
+
+def duckdb_query(input_file, query):
+    try:
+        conn = duckdb.connect(input_file)
+        cursor = conn.cursor()
+        cursor.execute(query)
+        if query.strip().upper().startswith("SELECT"):
+            results = cursor.fetchall()
+        else:
+            conn.commit()  
+            results = None 
+        cursor.close()
+        conn.close()
+        return results
+    except Exception as e:
+        raise ValueError(f"Error querying database: {e}")
+
+def query_database(db_path, output_file ,query, is_deleting, output_type):
+    logging.info(
+        f"query database called with input_file: {db_path}, output_file: {output_file}, query: {query}, is_deleting: {is_deleting}"
+    )
+    if is_deleting:
+        raise ValueError("Deleting is not supported")
+    
+
+    db_path, output_file = validate_data_paths(db_path, output_file)
+    try:
+        extension = os.path.splitext(db_path)[1][1:]
+        if extension == "db":
+            results = sqlite_query(db_path, query)
+        elif extension == "duckdb":
+            results = duckdb_query(db_path, query)
+        else:
+            raise ValueError("Invalid database file format.")
+        
+        if output_type == "single_value":
+            output_string = str(results[0][0])
+        elif output_type == "json":
+            output_string = json.dumps(results)
+        elif output_type == "csv":
+            csv_output = io.StringIO()
+            csv_writer = csv.writer(csv_output)
+            csv_writer.writerows(results)
+            output_string = csv_output.getvalue()
+        else:
+            Output_string = "\n".join(["\t".join(map(str, row)) for row in results])
+        write_file(output_file, output_string)
+    except Exception as e:
+        raise ValueError(f"Error querying database: {e}")
+
+            
+                    

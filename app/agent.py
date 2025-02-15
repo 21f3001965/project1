@@ -12,6 +12,7 @@ from helper import (
     extract_information,
     process_image,
     find_texts_with_embeddings,
+    query_database,
 )
 
 
@@ -449,7 +450,49 @@ def run_task(task):
                             "description": "Format of the text output: 'one_per_line', 'space_separated', or 'comma_separated'.",
                         },
                     },
-                    "required": ["input_file", "output_file", "find_type", "input_format", "output_format"]
+                    "required": [
+                        "input_file",
+                        "output_file",
+                        "find_type",
+                        "input_format",
+                        "output_format",
+                    ],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_database",
+                "description": """
+                    Executes a SQL query on a SQLite or DuckDB database and writes the result to an output file.
+                """,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "db_path": {
+                            "type": "string",
+                            "description": "Path to the SQLite database file.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path to the file where the query result will be written.",
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "The SQL query to execute.",
+                        },
+                        "is_deleting": {
+                            "type": "boolean",
+                            "description": "Whether the query is deleting/removing or not.",
+                        },
+                        "output_type": {
+                            "type": "string",
+                            "enum": ["single_value", "json", "csv", "text"],
+                            "description": "The desired output format: 'single_value' for a single number, 'json' for JSON, 'csv' for CSV, and 'text' for plain text.",
+                        },
+                    },
+                    "required": ["db_path", "output_file", "query", "is_deleting", "output_type"],
                 },
             },
         },
@@ -505,6 +548,9 @@ def run_task(task):
         elif function_name == "find_texts_with_embeddings":
             find_texts_with_embeddings(**arguments)
             return f"Text analysis completed. Result written to {arguments.get('output_file')}"
+        elif function_name == "query_database":
+            query_database(**arguments)
+            return f"Database query completed. Result written to {arguments.get('output_file')}"
         else:
             raise ValueError(f"Unknown function name: {function_name}")
     except ValueError as e:
