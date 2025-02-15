@@ -1,6 +1,5 @@
 import os
 import httpx # type: ignore
-import logging
 import csv
 import json
 import pandas as pd
@@ -19,7 +18,6 @@ def request_constructor():
 
 
 def call_llm_with_functions(task, tools):
-    logging.info(f"call llm with functions called with task: {task}")
     url, headers = request_constructor()
 
     data = {
@@ -43,14 +41,10 @@ def call_llm_with_functions(task, tools):
         response.raise_for_status()
         return response.json()  # Raises an HTTPError for bad responses (4xx, 5xx)
     except httpx.HTTPError as e:
-        logging.error(f"HTTP error {e.response.status_code}: {e.response.text}")
         raise Exception(f"Error calling OpenAI API: {e}")
 
 
 def llm_text_extraction(extraction_instruction, content):
-    logging.info(
-        f"llm text extraction called with extraction_instruction: {extraction_instruction}, content: {content}"
-    )
 
     schema = {
         "type": "object",
@@ -92,17 +86,13 @@ def llm_text_extraction(extraction_instruction, content):
     try:
         response = httpx.post(url, headers=headers, json=data, timeout=10)
         response.raise_for_status()
-        logging.info(response.json())
+        
         return response.json()
     except httpx.HTTPError as e:
-        logging.error(f"HTTP error {e.response.status_code}: {e.response.text}")
         raise Exception(f"Error calling OpenAI API: {e}")
 
 
 def llm_process_image(image_url, image_extension, processing_instruction):
-    logging.info(
-        f"llm process images called with image_path: {image_url}, processing_instruction: {processing_instruction}"
-    )
 
     url, headers = request_constructor()
     modified_instruction = f"""
@@ -177,14 +167,12 @@ def validate_path(file_path):
 
 
 def read_file(file_path: str) -> str:
-    logging.info(f"read file called with file_path: {file_path}")
     file_path = validate_path(file_path)
 
     try:
         with open(file_path, "r") as file:
             return file.read()
     except FileNotFoundError:
-        logging.info(f"File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
 
 

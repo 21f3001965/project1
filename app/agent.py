@@ -1,6 +1,6 @@
 from utils import call_llm_with_functions, read_file
 import json
-import logging
+
 from helper import (
     online_script_runner,
     write_file,
@@ -13,15 +13,18 @@ from helper import (
     process_image,
     find_texts_with_embeddings,
     query_database,
+    reject_task,
+    fetch_and_save_data,
+    clone_git_repo,
+    scrape_website,
+    compress_image,
+    resize_image,
+    transcribe_audio,
+    convert_markdown_to_html,
+    filter_csv_to_json_api,
 )
 
 
-logging.basicConfig(
-    filename="app.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 
 
 def run_task(task):
@@ -47,7 +50,7 @@ def run_task(task):
                             "description": "The package to install if not already installed, described in the task if any else leave blank.",
                         },
                     },
-                    "required": ["url", "arguments", "package"],
+                    "required": ["url", "email", "package"],
                 },
             },
         },
@@ -492,14 +495,258 @@ def run_task(task):
                             "description": "The desired output format: 'single_value' for a single number, 'json' for JSON, 'csv' for CSV, and 'text' for plain text.",
                         },
                     },
-                    "required": ["db_path", "output_file", "query", "is_deleting", "output_type"],
+                    "required": [
+                        "db_path",
+                        "output_file",
+                        "query",
+                        "is_deleting",
+                        "output_type",
+                    ],
+                },
+            },
+        },
+        # B-tasks
+        {
+            "type": "function",
+            "function": {
+                "name": "reject_task",
+                "description": "Rejects the task if it violates the security policy (e.g., deleting files or writing to an existing file).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "reason": {
+                            "type": "string",
+                            "description": "The reason for rejecting the task. This should clearly state that deleting or removing data is not allowed..",
+                        },
+                    },
+                    "required": ["reason"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_and_save_data",
+                "description": "Fetches data from an API and saves it to a file within the /data directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "api_url": {
+                            "type": "string",
+                            "description": "The URL of the API endpoint to fetch data from.",
+                        },
+                        "output_path": {
+                            "type": "string",
+                            "description": "Path where the fetched data will be saved. if not said then the file will be saved in /data directory.",
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "(Optional) The name of the file where the fetched data will be saved.",
+                        },
+                    },
+                    "required": ["api_url", "output_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "clone_git_repo",
+                "description": "Clone a git repository.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "repo_url": {
+                            "type": "string",
+                            "description": "The URL of the git repository to clone.",
+                        },
+                        "output_path": {
+                            "type": "string",
+                            "description": "Path where the cloned repository will be saved. if not said then the file will be saved in /data directory.",
+                        },
+                    },
+                    "required": ["repo_url", "output_path"],
+                },
+            },
+        },
+        {
+    "type": "function",
+    "function": {
+        "name": "scrape_website",
+        "description": "Extract specific data from a website based on user-defined criteria.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL of the website to scrape."
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Path where the extracted data will be saved. If not specified, the file will be saved in the /data directory."
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "(Optional) The name of the file where the extracted data will be saved."
+                },
+                "scrape_target": {
+                    "type": "array",
+                    "description": "List of elements to scrape from the webpage.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "element": {
+                                "type": "string",
+                                "description": "The HTML tag, CSS selector, or XPath of the element to scrape."
+                            },
+                            "attribute": {
+                                "type": "string",
+                                "description": "(Optional) If specified, extracts the attribute (e.g., 'href', 'src') instead of text content."
+                            }
+                        },
+                        "required": ["element"]
+                    }
+                }
+            },
+            "required": ["url", "output_path", "scrape_target"]
+        }
+    }
+},
+
+        {
+            "type": "function",
+            "function": {
+                "name": "compress_image",
+                "description": "Compress an image.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image_path": {
+                            "type": "string",
+                            "description": "The path of the image to compress.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path where the compressed image will be saved. if not described in task then the file will be saved in /data with same name as input + 'compressed' directory.",
+                        },
+                        "quality": {
+                            "type": "integer",
+                            "description": "The quality of the compressed image (0-100).",
+                            "minimum": 0,
+                            "maximum": 100,
+                        },
+                    },
+                    "required": ["image_path", "output_file", "quality"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "resize_image",
+                "description": "Resizes an image.",
+                "parameters": {
+                    "image_path": {
+                        "type": "string",
+                        "description": "The path to the image file.",
+                    },
+                    "output_file": {
+                        "type": "string",
+                        "description": "The path to write the resized image to. if not described in task then the file will be saved in /data with same name as input + 'resized' directory.",
+                    },
+                    "width": {
+                        "type": "integer",
+                        "description": "The width of the resized image.",
+                        "minimum": 1,
+                    },
+                    "height": {
+                        "type": "integer",
+                        "description": "The height of the resized image.",
+                        "minimum": 1,
+                    },
+                },
+                "required": ["image_path", "output_file", "width", "height"],
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "transcribe_audio",
+                "description": "Transcribes an audio file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "audio_path": {
+                            "type": "string",
+                            "description": "The path to the audio file.",
+                        },
+                        "output_path": {
+                            "type": "string",
+                            "description": "The path to write the transcription to.",
+                        },
+                    },
+                    "required": ["audio_path", "output_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "convert_markdown_to_html",
+                "description": "Convert Markdown to HTML.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "markdown_path": {
+                            "type": "string",
+                            "description": "The path to the Markdown file.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "The path to write the HTML file to.",
+                        },
+                    },
+                    "required": ["markdown_path", "output_file"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "filter_csv_to_json_api",
+                "description": "Write an API endpoint that filters a CSV file and returns JSON data.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "csv_path": {
+                            "type": "string",
+                            "description": "The path to the CSV file.",
+                        },
+                        "filter_column": {
+                            "type": "string",
+                            "description": "The column to filter by.",
+                        },
+                        "filter_value": {
+                            "type": "string",
+                            "description": "The value to filter for.",
+                        },
+                        "api_endpoint": {
+                            "type": "string",
+                            "description": "The API endpoint where the data will be served.",
+                        },
+                    },
+                    "required": [
+                        "csv_path",
+                        "filter_column",
+                        "filter_value",
+                        "api_endpoint",
+                    ],
                 },
             },
         },
     ]
 
     llm_response = call_llm_with_functions(task, tools)
-    logging.info(f"respose: {llm_response}")
 
     try:
         task_details = llm_response["choices"][0]["message"]["tool_calls"][0][
@@ -551,6 +798,34 @@ def run_task(task):
         elif function_name == "query_database":
             query_database(**arguments)
             return f"Database query completed. Result written to {arguments.get('output_file')}"
+        elif function_name == "reject_task":
+            return reject_task(**arguments)
+        elif function_name == "fetch_and_save_data":
+            file_path = fetch_and_save_data(**arguments)
+            return f"Data fetched and saved to {file_path}"
+        elif function_name == "clone_git_repo":
+            clone_git_repo(**arguments)
+            return f"Git repository cloned and saved to {arguments.get('output_path')}"
+        elif function_name == "scrape_website":
+            scrape_website(**arguments)
+            return f"Data extracted from website and saved to {arguments.get('output_path')}"
+        elif function_name == "compress_image":
+            compress_image(**arguments)
+            return f"Image compressed and saved to {arguments.get('output_path')}"
+        elif function_name == "resize_image":
+            resize_image(**arguments)
+            return f"Image resized and saved to {arguments.get('output_file')}"
+        elif function_name == "transcribe_audio":
+            transcribe_audio(**arguments)
+            return f"Audio transcription completed. Result written to {arguments.get('output_path')}"
+        elif function_name == "convert_markdown_to_html":
+            convert_markdown_to_html(**arguments)
+            return f"Markdown converted to HTML and saved to {arguments.get('output_file')}"
+        elif function_name == "filter_csv_to_json_api":
+            filter_csv_to_json_api(**arguments)
+            return (
+                f"CSV filtered and JSON data served at {arguments.get('api_endpoint')}"
+            )
         else:
             raise ValueError(f"Unknown function name: {function_name}")
     except ValueError as e:

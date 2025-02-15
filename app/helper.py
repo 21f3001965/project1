@@ -1,6 +1,5 @@
 import subprocess
 import os
-import logging
 import datetime
 from dateutil.parser import parse
 from utils import (
@@ -12,7 +11,9 @@ from utils import (
     extract_text_from_excel,
     llm_process_image,
     text_embedding_llm,
+    httpx,
 )
+from PIL import Image
 import glob
 import json
 import re
@@ -21,15 +22,14 @@ from bs4 import BeautifulSoup  # type: ignore
 import base64
 import numpy as np
 import sqlite3
-import duckdb
+import duckdb  # type: ignore
 import csv
 import io
+import mimetypes
 
-#A-1
+
+# A-1
 def online_script_runner(url, email, package):
-    logging.info(
-        f"online script runner called with url: {url}, email: {email}, package: {package}"
-    )
     if (
         package
         and package != ""
@@ -45,7 +45,6 @@ def online_script_runner(url, email, package):
 
 
 def write_file(file_path, content):
-    logging.info(f"write file called with file_path: {file_path}, content: {content}")
     if not file_path.startswith("data/"):
         raise ValueError("cannot write file outside of data directory")
     if os.path.exists(file_path) and not content:
@@ -54,11 +53,9 @@ def write_file(file_path, content):
     with open(file_path, "w") as file:
         file.write(content)
 
-#A-2
+
+# A-2
 def format_file_with_prettier(file_path, prettier_version):
-    logging.info(
-        f"format file called with file_path: {file_path}, prettier_version: {prettier_version}"
-    )
     file_path = file_path.strip("/")
     if not file_path.startswith("data/"):
         raise ValueError("cannot format file outside of data directory")
@@ -86,7 +83,6 @@ def format_file_with_prettier(file_path, prettier_version):
             )
             installed_version = result.stdout.strip()
             if installed_version == prettier_version:
-                logging.info("Prettier is already installed with the correct version.")
                 already_installed = True
             else:
                 already_installed = False
@@ -118,11 +114,9 @@ def validate_data_paths(*paths):
         cleaned_paths.append(path)
     return cleaned_paths
 
-#A-3
+
+# A-3
 def count_dates(input_file, output_file, date_part, value_to_count):
-    logging.info(
-        f"count dates called with input_file: {input_file}, output_file: {output_file}, date_part: {date_part}, value_to_count: {value_to_count}"
-    )
     input_file, output_file = validate_data_paths(input_file, output_file)
     try:
         file_extension = os.path.splitext(input_file)[1][1:]
@@ -145,7 +139,6 @@ def count_dates(input_file, output_file, date_part, value_to_count):
                 date_obj = parse(date_str)
 
             except ValueError:
-                logging.info(f"Skipping invalid date format: {date_str}")
                 continue
 
             if date_part == "weekday":
@@ -167,11 +160,9 @@ def count_dates(input_file, output_file, date_part, value_to_count):
     except Exception as e:
         raise ValueError(f"Error counting dates: {e}")
 
+
 # A-4
 def sort_contacts(input_file, output_file, sort_fields, sort_direction):
-    logging.info(
-        f"sort contacts called with input_file: {input_file}, output_file: {output_file}, sort_fields: {sort_fields}, sort_direction: {sort_direction}"
-    )
     input_file, output_file = validate_data_paths(input_file, output_file)
 
     if len(sort_fields) != len(sort_direction):
@@ -208,7 +199,8 @@ def sort_contacts(input_file, output_file, sort_fields, sort_direction):
     except Exception as e:
         raise ValueError(f"Error sorting contacts: {e}")
 
-#A-5
+
+# A-5
 def extract_log_info(
     log_directory,
     sort_order,
@@ -222,9 +214,6 @@ def extract_log_info(
     lines_range_end=None,
     regex_pattern=None,
 ):
-    logging.info(
-        f"extract log info called with log_directory: {log_directory}, output_file: {output_file}, extraction_type: {extraction_type}, num_files: {num_files}, line_number: {line_number}"
-    )
     log_directory, output_file = validate_data_paths(log_directory, output_file)
 
     try:
@@ -287,7 +276,7 @@ def extract_log_info(
                 num_files = int(num_files)
                 files = files[:num_files]
             except ValueError:
-                logging.info(f"Invalid num_files value: {num_files}, using all files")
+                raise ValueError("num_files must be an integer")
 
         output_lines = []
         for file_path in files:
@@ -367,13 +356,12 @@ def extract_log_info(
     except Exception as e:
         raise ValueError(f"Error extracting log info: {e}")
 
-#A-6
+
+# A-6
 def extract_markdown_headers(
     md_directory, header_level, header_occurrence, output_file, n_value=None
 ):
-    logging.info(
-        f"extract_markdown_headers called with md_directory: {md_directory}, header_level: {header_level}, header_occurrence: {header_occurrence}, output_file: {output_file}, n_value: {n_value}"
-    )
+    
     md_directory, output_file = validate_data_paths(md_directory, output_file)
 
     try:
@@ -417,11 +405,10 @@ def extract_markdown_headers(
     except Exception as e:
         raise ValueError(f"Error extracting markdown headers: {e}")
 
-#A-7
+
+# A-7
 def extract_information(input_file, output_file, extraction_instruction):
-    logging.info(
-        f"extract information called with input_file: {input_file}, output_file: {output_file}, extraction_instruction: {extraction_instruction}"
-    )
+   
     input_file, output_file = validate_data_paths(input_file, output_file)
 
     try:
@@ -456,11 +443,10 @@ def extract_information(input_file, output_file, extraction_instruction):
     except Exception as e:
         raise ValueError(f"Error extracting information: {e}")
 
-#A-8
+
+# A-8
 def process_image(image_path, output_file, processing_instruction):
-    logging.info(
-        f"process image called with image_path: {image_path}, output_file: {output_file}, processing_instruction: {processing_instruction}"
-    )
+   
     image_path, output_file = validate_data_paths(image_path, output_file)
 
     try:
@@ -474,7 +460,7 @@ def process_image(image_path, output_file, processing_instruction):
             image_llm_response = llm_process_image(
                 encoded_string, image_extension, general_instruction
             )
-            logging.info(image_llm_response)
+            
             extracted_data = image_llm_response["choices"][0]["message"]["content"]
 
             text_llm_response = llm_text_extraction(
@@ -497,9 +483,7 @@ def process_image(image_path, output_file, processing_instruction):
 def find_texts_with_embeddings(
     input_file, output_file, find_type, input_format, output_format
 ):
-    logging.info(
-        f"analyze text called with input_file: {input_file}, output_file: {output_file}, find_type: {find_type}, input_format: {input_format}, output_format: {output_format}"
-    )
+    
 
     input_file, output_file = validate_data_paths(input_file, output_file)
 
@@ -558,6 +542,7 @@ def find_texts_with_embeddings(
     except Exception as e:
         raise ValueError(f"Error analyzing text: {e}")
 
+
 # A-10
 def sqlite_query(input_file, query):
     try:
@@ -575,6 +560,7 @@ def sqlite_query(input_file, query):
     except Exception as e:
         raise ValueError(f"Error querying database: {e}")
 
+
 def duckdb_query(input_file, query):
     try:
         conn = duckdb.connect(input_file)
@@ -583,21 +569,19 @@ def duckdb_query(input_file, query):
         if query.strip().upper().startswith("SELECT"):
             results = cursor.fetchall()
         else:
-            conn.commit()  
-            results = None 
+            conn.commit()
+            results = None
         cursor.close()
         conn.close()
         return results
     except Exception as e:
         raise ValueError(f"Error querying database: {e}")
 
-def query_database(db_path, output_file ,query, is_deleting, output_type):
-    logging.info(
-        f"query database called with input_file: {db_path}, output_file: {output_file}, query: {query}, is_deleting: {is_deleting}"
-    )
+
+def query_database(db_path, output_file, query, is_deleting, output_type):
+    
     if is_deleting:
         raise ValueError("Deleting is not supported")
-    
 
     db_path, output_file = validate_data_paths(db_path, output_file)
     try:
@@ -608,7 +592,7 @@ def query_database(db_path, output_file ,query, is_deleting, output_type):
             results = duckdb_query(db_path, query)
         else:
             raise ValueError("Invalid database file format.")
-        
+
         if output_type == "single_value":
             output_string = str(results[0][0])
         elif output_type == "json":
@@ -624,5 +608,246 @@ def query_database(db_path, output_file ,query, is_deleting, output_type):
     except Exception as e:
         raise ValueError(f"Error querying database: {e}")
 
+
+def reject_task(reason):
+    raise ValueError(f"Task rejected: {reason}")
+
+
+def fetch_and_save_data(api_url, output_path, filename=None):
+    output_path = output_path.strip("/")
+    if not output_path.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+    os.makedirs(output_path, exist_ok=True)
+    try:
+        response = httpx.get(api_url, timeout=10, stream=True)
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "")
+        extension = mimetypes.guess_extension(content_type.split(";")[0]) or ".bin"
+
+        if filename is None:
+            filename = f"downloaded_file{extension}"
+
+        file_path = os.path.join(output_path, filename)
+
+        if "application/json" in content_type:
+            with open(file_path, "w", encoding="utf-8") as file:
+                file.write(response.text)
+
+        else:
+            with open(file_path, "wb") as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    file.write(chunk)
+
+        return file_path
+    except Exception as e:
+        raise ValueError(f"Error fetching and saving data: {e}")
+
+
+def clone_git_repo(repo_url, output_path):
+    output_path = output_path.strip("/")
+    if not output_path.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            ["git", "clone", repo_url, output_path],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"Error cloning git repository: {e}")
+
+
+from typing import List, Dict, Optional
+
+
+def scrape_website(
+    url: str,
+    output_path: str,
+    scrape_target: List[Dict[str, str]],
+    filename: Optional[str] = None,
+):
+    output_path = output_path.strip("/")
+
+    if not output_path.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    try:
+        # Fetch webpage content
+        response = httpx.get(url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        extracted_data = []
+
+        # Extract specified elements
+        for target in scrape_target:
+            element = target.get("element")
+            attribute = target.get("attribute", None)
+
+            if not element:
+                continue
+
+            elements = soup.select(element)  # Use CSS selectors for flexibility
+
+            for el in elements:
+                if attribute:
+                    data = el.get(attribute)  # Extract attribute (e.g., href, src)
+                else:
+                    data = el.get_text(strip=True)  # Extract text content
+
+                if data:
+                    extracted_data.append({element: data})
+
+        # Default filename
+        if not filename:
+            filename = "scraped_data.json"
+
+        file_path = os.path.join(output_path, filename)
+
+        # Save the extracted data as JSON
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(extracted_data, f, indent=4)
+
+        return {
+            "message": "Scraping successful",
+            "file_path": file_path,
+            "data": extracted_data,
+        }
+
+    except Exception as e:
+        raise ValueError(f"Error scraping website: {e}")
+
+
+def compress_image(image_path, output_file, quality):
+    output_file = output_file.strip("/")
+
+    if not output_file.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    try:
+        if image.mode in ("RGBA", "P"):
+            image = image.convert("RGB")
+        image.save(output_file, format=image.format, optimize=True, quality=quality)
+    except Exception as e:
+        raise ValueError(f"Image compression failed: {e}")
+
+
+def resize_image(image_path, output_file, width, height):
+    output_file = output_file.strip("/")
+
+    if not output_file.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    try:
+        image = Image.open(image_path)
+        image = image.resize((width, height), Image.ANTIALIAS)  # Ensures better quality
+        image.save(output_file, format=image.format)  # Preserves format
+        return output_file
+    except Exception as e:
+        raise ValueError(f"Image resizing failed: {e}")
+
+
+import wave
+from vosk import Model, KaldiRecognizer  # type: ignore
+
+def transcribe_audio(audio_path, output_file, model_path="model"):
+    output_file = output_file.strip("/")
+    
+    if not output_file.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+    
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    
+    # Ensure model exists
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Vosk model not found at '{model_path}'. Download from: https://alphacephei.com/vosk/models")
+    
+    try:
+        model = Model(model_path)
+        with wave.open(audio_path, "rb") as wf:
+            if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
+                raise ValueError("Audio file must be WAV format with 16-bit PCM encoding.")
             
-                    
+            rec = KaldiRecognizer(model, wf.getframerate())
+            transcript = ""
+            
+            while True:
+                data = wf.readframes(4000)
+                if len(data) == 0:
+                    break
+                if rec.AcceptWaveform(data):
+                    result = json.loads(rec.Result())
+                    transcript += result.get("text", "") + " "
+        
+        write_file(output_file, transcript.strip())
+        return output_file
+    
+    except Exception as e:
+        raise ValueError(f"Audio transcription failed: {e}")
+
+
+def convert_markdown_to_html(markdown_path, output_file):
+    output_file = output_file.strip("/")
+
+    if not output_file.startswith("data/"):
+        raise ValueError("Output file must be in the data/ directory.")
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    try:
+        with open(markdown_path, "r", encoding="utf-8") as f:
+            markdown_text = f.read()
+        html = markdown2.markdown(markdown_text)
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(html)
+        return output_file
+    except Exception as e:
+        raise Exception(f"Markdown to HTML conversion failed: {e}")
+
+
+from fastapi import FastAPI
+
+
+def filter_csv_to_json_api(
+    app: FastAPI,
+    csv_path: str,
+    filter_column: str,
+    filter_value: str,
+    api_endpoint: str,
+):
+    csv_path = csv_path.strip("/")
+
+    if not csv_path.startswith("data/"):
+        raise ValueError("CSV file must be in the data/ directory.")
+
+    try:
+        data: List[Dict] = []
+        with open(csv_path, "r") as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if row[filter_column] == filter_value:
+                    data.append(row)
+
+        # Define a new FastAPI endpoint dynamically
+        async def dynamic_endpoint():
+
+            return data
+
+        # Check if the route already exists to prevent duplicate registrations
+        existing_routes = {route.path for route in app.routes}
+        if f"/{api_endpoint}" not in existing_routes:
+            app.get(f"/{api_endpoint}")(dynamic_endpoint)
+
+        return {"message": f"Endpoint '/{api_endpoint}' created successfully!"}
+
+    except Exception as e:
+        raise Exception(f"CSV filtering failed: {e}")
