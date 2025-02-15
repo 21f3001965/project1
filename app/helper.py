@@ -180,10 +180,10 @@ def sort_contacts(input_file, output_file, sort_fields, sort_direction):
             reverse = direction.lower() == "desc"
             sort_criteria.append((field, reverse))
 
-        def mutlti_sort(contact):
+        def multi_sort(contact):
             return tuple(contact.get(field) for field, _ in sort_criteria)
 
-        contacts.sort(key=mutlti_sort, reverse=False)
+        contacts.sort(key=multi_sort, reverse=False)
 
         for i, (field, reverse) in enumerate(sort_criteria):
             if reverse:

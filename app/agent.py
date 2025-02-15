@@ -348,7 +348,7 @@ def run_task(task):
                         },
                     },
                     "required": [
-                        "docs_directory",
+                        "md_directory",
                         "header_level",
                         "header_occurrence",
                         "output_file",
