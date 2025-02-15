@@ -9,7 +9,6 @@
 #     "python-docx",
 #     "markdown2",
 #     "beautifulsoup4",
-#
 # ]
 # ///
 
@@ -17,7 +16,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from agent import run_task
 from utils import read_file
-
+import logging
 app = FastAPI()
 
 app.add_middleware(
@@ -42,6 +41,7 @@ def run(task: str):
     except FileNotFoundError as e:
         return Response(content=str(e), status_code=400)
     except Exception as e:
+        logging.info(f"Error calling llm: {e}")
         return Response(content=str(e), status_code=500)
 
 

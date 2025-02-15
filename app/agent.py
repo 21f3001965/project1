@@ -1,4 +1,4 @@
-from utils import call_llm, read_file
+from utils import call_llm_with_functions, read_file
 import json
 import logging
 from helper import (
@@ -9,6 +9,8 @@ from helper import (
     sort_contacts,
     extract_log_info,
     extract_markdown_headers,
+    extract_information,
+    process_image,
 )
 
 
@@ -317,37 +319,99 @@ def run_task(task):
                         },
                         "output_file": {
                             "type": "string",
-                            "description": "Path to the output file to save the processed content.",\
+                            "description": "Path to the output file to save the processed content.",
                         },
                         "header_level": {
                             "type": "string",
                             "enum": ["h1", "h2", "h3", "h4", "h5", "h6"],
                             "description": """ 
                                 The level of the headers to extract: 'h1', 'h2', 'h3', 'h4', 'h5', or 'h6'.
-                            """
+                            """,
                         },
                         "header_occurrence": {
                             "type": "string",
                             "enum": ["first", "nth", "last", "all"],
                             "description": """ 
                                 Which occurrence of the header to extract: 'first', 'last', 'all', or 'nth'.
-                            """
+                            """,
                         },
                         "n_value": {
                             "type": "string",
                             "description": """
                                 (Optional) the n value if header occurence is nth.
-                            """
-                        }
+                            """,
+                        },
                     },
-                    "required": ["docs_directory", "header_level", "header_occurrence", "output_file"]
-                }
-            }
+                    "required": [
+                        "docs_directory",
+                        "header_level",
+                        "header_occurrence",
+                        "output_file",
+                    ],
+                },
+            },
         },
-        
+        {
+            "type": "function",
+            "function": {
+                "name": "extract_information",
+                "description": """
+                    use this function if the task requires to extract information from a file with provided instructions
+                    (e.g extract some information from file containg email message)                                        
+                    and write the extracted information to an output file.
+                """,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "input_file": {
+                            "type": "string",
+                            "description": "Path to the file from which to extract information.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path to the file to write the extracted information.",
+                        },
+                        "extraction_instruction": {
+                            "type": "string",
+                            "description": "A plain-English instruction on what to extract from the file (e.g., 'the sender's email address', 'the customer ID', 'the product name').",
+                        },
+                    },
+                    "required": ["input_file", "output_file", "extraction_instruction"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "process_image",
+                "description": """
+                    use this function if the task requires to process and image
+                    based on a plain english instruction,
+                    write the result to an output file.
+                """,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image_path": {
+                            "type": "string",
+                            "description": "Path to the image file to process.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "Path to the file where the processing result will be written..",
+                        },
+                        "processing_instruction": {
+                            "type": "string",
+                            "description": "A plain-English instruction on what to do with the image (e.g., 'extract credit card number', 'describe the image', 'identify objects in the image').",
+                        },
+                    },
+                    "required": ["image_path", "output_file", "processing_instruction"],
+                },
+            },
+        },
     ]
 
-    llm_response = call_llm(task, tools)
+    llm_response = call_llm_with_functions(task, tools)
     logging.info(f"respose: {llm_response}")
 
     try:
@@ -386,6 +450,14 @@ def run_task(task):
         elif function_name == "extract_markdown_headers":
             extract_markdown_headers(**arguments)
             return f"Markdown processing completed. Result written to {arguments.get('output_file')}"
+        elif function_name == "extract_information":
+            extract_information(**arguments)
+            return (
+                f"Information extracted and written to {arguments.get('output_file')}"
+            )
+        elif function_name == "process_image":
+            process_image(**arguments)
+            return f"Image processing completed. Result written to {arguments.get('output_file')}"
         else:
             raise ValueError(f"Unknown function name: {function_name}")
     except ValueError as e:

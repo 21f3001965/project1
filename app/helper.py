@@ -5,16 +5,19 @@ import datetime
 from dateutil.parser import parse
 from utils import (
     read_file,
+    llm_text_extraction,
     extract_text_from_csv,
     extract_text_from_json,
     extract_text_from_word,
-    extract_text_from_excel
+    extract_text_from_excel,
+    llm_process_image,
 )
 import glob
 import json
 import re
 import markdown2
 from bs4 import BeautifulSoup
+import base64
 
 
 def online_script_runner(url, email, package):
@@ -362,25 +365,28 @@ def extract_log_info(
     except Exception as e:
         raise ValueError(f"Error extracting log info: {e}")
 
-def extract_markdown_headers(md_directory, header_level, header_occurrence, output_file, n_value = None):
+
+def extract_markdown_headers(
+    md_directory, header_level, header_occurrence, output_file, n_value=None
+):
     logging.info(
         f"extract_markdown_headers called with md_directory: {md_directory}, header_level: {header_level}, header_occurrence: {header_occurrence}, output_file: {output_file}, n_value: {n_value}"
     )
     md_directory, output_file = validate_data_paths(md_directory, output_file)
 
     try:
-        index_data ={}
+        index_data = {}
         files = glob.glob(os.path.join(md_directory, "**", "*.md"), recursive=True)
-        
+
         for file in files:
             with open(file, "r") as f:
                 md_content = f.read()
-        
+
             html = markdown2.markdown(md_content)
             soup = BeautifulSoup(html, "html.parser")
-            
+
             headers = soup.find_all(f"{header_level}")
-            
+
             if header_occurrence == "first":
                 title = headers[0].get_text().strip() if headers else ""
             elif header_occurrence == "last":
@@ -388,16 +394,102 @@ def extract_markdown_headers(md_directory, header_level, header_occurrence, outp
             elif header_occurrence == "n":
                 if n_value is not None:
                     raise ValueError("N value must be given if header_occurance is nth")
-                title = headers[n_value].get_text().strip() if len(headers) >= n_value else ""
+                title = (
+                    headers[n_value].get_text().strip()
+                    if len(headers) >= n_value
+                    else ""
+                )
             elif header_occurrence == "all":
-                title = " | ".join(header.get_text().strip() for header in headers) if headers else ""
+                title = (
+                    " | ".join(header.get_text().strip() for header in headers)
+                    if headers
+                    else ""
+                )
             else:
                 raise ValueError(f"Invalid header_occurrence: {header_occurrence}")
-            
+
             filename = os.path.relpath(file, md_directory)
             index_data[filename] = title
         with open(output_file, "w") as outfile:
             json.dump(index_data, outfile, indent=4)
-    
+
     except Exception as e:
-        raise ValueError(f"Error extracting markdown headers: {e}")            
+        raise ValueError(f"Error extracting markdown headers: {e}")
+
+
+def extract_information(input_file, output_file, extraction_instruction):
+    logging.info(
+        f"extract information called with input_file: {input_file}, output_file: {output_file}, extraction_instruction: {extraction_instruction}"
+    )
+    input_file, output_file = validate_data_paths(input_file, output_file)
+
+    try:
+
+        file_extension = os.path.splitext(input_file)[1][1:]
+        if file_extension == "csv":
+            content = extract_text_from_csv(
+                input_file, output_file, extraction_instruction
+            )
+        elif file_extension == "json":
+            content = extract_text_from_json(
+                input_file, output_file, extraction_instruction
+            )
+        elif file_extension == "docx":
+            content = extract_text_from_word(
+                input_file, output_file, extraction_instruction
+            )
+        else:
+            with open(input_file, "r") as f:
+                content = f.read()
+
+        try:
+            llm_response = llm_text_extraction(extraction_instruction, content)
+            extract_data = json.loads(
+                llm_response["choices"][0]["message"]["tool_calls"][0]["function"][
+                    "arguments"
+                ]
+            )["extracted_information"]
+            for i, data in enumerate(extract_data):
+                with open(output_file, "a") as f:
+                    f.write(" ".join(extract_data))
+        except Exception as e:
+            raise Exception(f"Error calling llm: {e}")
+    except Exception as e:
+        raise ValueError(f"Error extracting information: {e}")
+
+
+def process_image(image_path, output_file, processing_instruction):
+    logging.info(
+        f"process image called with image_path: {image_path}, output_file: {output_file}, processing_instruction: {processing_instruction}"
+    )
+    image_path, output_file = validate_data_paths(image_path, output_file)
+
+    
+    try:
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+
+        general_instruction = f"Extract all readable text and numbers from this image.Provide the extracted content in a structured format."
+ 
+        try:
+            image_extension = os.path.splitext(image_path)[1][1:]
+            image_llm_response = llm_process_image(
+                encoded_string, image_extension, general_instruction
+            )
+            logging.info(image_llm_response)
+            extracted_data = image_llm_response['choices'][0]['message']['content']
+            
+            text_llm_response = llm_text_extraction(processing_instruction, extracted_data)
+            
+            extract_data = json.loads(
+                text_llm_response["choices"][0]["message"]["tool_calls"][0]["function"][
+                    "arguments"
+                ]
+            )["extracted_information"]
+            for i, data in enumerate(extract_data):
+                with open(output_file, "a") as f:
+                    f.write(" ".join(extract_data))
+        except Exception as e:
+            raise Exception(f"Error calling llm: {e}")
+    except Exception as e:
+        raise ValueError(f"Error processing image: {e}")
