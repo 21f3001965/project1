@@ -11,14 +11,15 @@ from utils import (
     extract_text_from_word,
     extract_text_from_excel,
     llm_process_image,
+    text_embedding_llm
 )
 import glob
 import json
 import re
-import markdown2
-from bs4 import BeautifulSoup
+import markdown2 # type: ignore
+from bs4 import BeautifulSoup # type: ignore
 import base64
-
+import numpy as np
 
 def online_script_runner(url, email, package):
     logging.info(
@@ -493,3 +494,57 @@ def process_image(image_path, output_file, processing_instruction):
             raise Exception(f"Error calling llm: {e}")
     except Exception as e:
         raise ValueError(f"Error processing image: {e}")
+
+def find_texts_with_embeddings(input_file, output_file, find_type, input_format, output_format):
+    logging.info(
+     f"analyze text called with input_file: {input_file}, output_file: {output_file}, find_type: {find_type}, input_format: {input_format}, output_format: {output_format}"   
+    )
+    
+    input_file, output_file = validate_data_paths(input_file, output_file)
+    
+    try:  
+        if input_format == "csv":
+            texts = extract_text_from_csv(input_file)
+        elif input_format == "space_separated":
+            with open(input_file, "r") as f:
+                texts = f.read().split()
+        else:
+            with open(input_file, "r") as f:
+                texts = [line.strip() for line in f.readlines()]
+        
+        if len(texts) < 2:
+            raise ValueError("Need at least two texts in the input file.")
+        
+        
+        llm_response = text_embedding_llm(texts)
+        embeddings = np.array([np.array(embedding["embedding"]) for embedding in llm_response["data"]])
+        
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True) 
+        normalized_embeddings = embeddings / norms
+        similarity_matrix = np.dot(normalized_embeddings, normalized_embeddings.T)
+        
+        np.fill_diagonal(similarity_matrix, -np.inf) # Ignore self-similarity
+        
+        if find_type == "most_similar":
+               index = np.unravel_index(np.argmax(similarity_matrix), similarity_matrix.shape)
+        elif find_type == "most_dissimilar":
+            index = np.unravel_index(np.argmin(similarity_matrix), similarity_matrix.shape)
+        else:
+            raise ValueError("Invalid find_type. Use 'most_similar' or 'most_dissimilar'.")
+        
+        pairs = (texts[index[0]], texts[index[1]])
+        
+        if output_format == "comma_separated":
+            output_string = pairs[0] + "," + pairs[1]
+        elif output_format == "one_per_line":
+            output_string = pairs[0] + "\n" + pairs[1]
+        elif output_format == "space_separated":
+            output_string = pairs[0] + " " + pairs[1]
+        else:
+            raise ValueError("Invalid output_format. Use 'comma_separated', 'one_per_line', or 'space_separated'.")
+        
+        with open(output_file, "w") as f:
+            f.write(output_string)
+        
+    except Exception as e:
+        raise ValueError(f"Error analyzing text: {e}")

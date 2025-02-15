@@ -1,10 +1,10 @@
 import os
-import httpx
+import httpx # type: ignore
 import logging
 import csv
 import json
 import pandas as pd
-import docx
+import docx # type: ignore
 
 AIPROXY_TOKEN = os.environ.get("AIPROXY_TOKEN")
 
@@ -139,6 +139,25 @@ def llm_process_image(image_url, image_extension, processing_instruction):
     
     try: 
         response = httpx.post(url, headers=headers, json=data, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError as e:
+        raise Exception(f"Error calling OpenAI API: {e}")
+
+def text_embedding_llm(texts):
+    url = "https://aiproxy.sanand.workers.dev/openai/v1/embeddings"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {AIPROXY_TOKEN}",
+    }
+    data = {
+        "input": texts,
+        "model": "text-embedding-3-small",
+        "encoding_format": "float"
+    }
+
+    try:
+        response = httpx.post(url, headers=headers, data= json.dumps(data), timeout=10)
         response.raise_for_status()
         return response.json()
     except httpx.HTTPError as e:

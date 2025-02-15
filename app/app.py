@@ -9,6 +9,7 @@
 #     "python-docx",
 #     "markdown2",
 #     "beautifulsoup4",
+#     "numpy"
 # ]
 # ///
 
