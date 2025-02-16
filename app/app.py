@@ -34,6 +34,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import os
+
+# Ensure 'data' directory exists
+DATA_DIR = "data"
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
 
 @app.post("/run")
 def run(task: str):

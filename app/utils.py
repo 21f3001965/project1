@@ -30,6 +30,7 @@ def call_llm_with_functions(task, tools):
                 "content": """
                     You are an automation agent. You will receive a task in plain English. 
                     Your job is to parse the task and use function calling to determine the necessary actions.
+                    If the task requires to generate code use the write_code_and_run function and it can only read or write in the data directory.
                 """,
             },
         ],

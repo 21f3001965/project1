@@ -22,9 +22,8 @@ from helper import (
     transcribe_audio,
     convert_markdown_to_html,
     filter_csv_to_json_api,
+    write_code_and_run,
 )
-
-
 
 
 def run_task(task):
@@ -81,7 +80,7 @@ def run_task(task):
                     "properties": {
                         "file_path": {
                             "type": "string",
-                            "description": "The path of the file to write.",
+                            "description": "The path of the file to write. if directory is not defined in task it will be data/",
                         },
                         "content": {
                             "type": "string",
@@ -579,15 +578,15 @@ def run_task(task):
                     "properties": {
                         "url": {
                             "type": "string",
-                            "description": "The URL of the website to scrape."
+                            "description": "The URL of the website to scrape.",
                         },
                         "output_path": {
                             "type": "string",
-                            "description": "Path where the extracted data will be saved. If not specified, the file will be saved in the /data directory."
+                            "description": "Path where the extracted data will be saved. If not specified, the file will be saved in the /data directory.",
                         },
                         "filename": {
                             "type": "string",
-                            "description": "(Optional) The name of the file where the extracted data will be saved."
+                            "description": "(Optional) The name of the file where the extracted data will be saved.",
                         },
                         "scrape_target": {
                             "type": "array",
@@ -597,22 +596,21 @@ def run_task(task):
                                 "properties": {
                                     "element": {
                                         "type": "string",
-                                        "description": "The HTML tag, CSS selector, or XPath of the element to scrape."
+                                        "description": "The HTML tag, CSS selector, or XPath of the element to scrape.",
                                     },
                                     "attribute": {
                                         "type": "string",
-                                        "description": "(Optional) If specified, extracts the attribute (e.g., 'href', 'src') instead of text content."
-                                    }
+                                        "description": "(Optional) If specified, extracts the attribute (e.g., 'href', 'src') instead of text content.",
+                                    },
                                 },
-                                "required": ["element"]
-                            }
-                        }
+                                "required": ["element"],
+                            },
+                        },
                     },
-                    "required": ["url", "output_path", "scrape_target"]
-                }
-            }
+                    "required": ["url", "output_path", "scrape_target"],
+                },
+            },
         },
-
         {
             "type": "function",
             "function": {
@@ -669,7 +667,6 @@ def run_task(task):
                     },
                     "required": ["image_path", "output_file", "width", "height"],
                 },
-
             },
         },
         {
@@ -745,6 +742,33 @@ def run_task(task):
                         "filter_value",
                         "api_endpoint",
                     ],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_and_execute_code",
+                "description": "Generates Python code for a given task, ensuring safe execution and file handling. \
+        All file operations (reading and writing) must be restricted to the 'data/' directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "generated_code": {
+                            "type": "string",
+                            "description": "Python code that accomplishes the requested task. \
+                    All file read and write operations must be restricted to the 'data/' directory. \
+                    Any attempt to access files outside 'data/' should raise an error. \
+                    If saving is required, the generated code must handle it inside 'data/'.",
+                        },
+                        "dependencies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of additional Python dependencies required to run the generated code. \
+                    Common built-in modules should not be included.",
+                        },
+                    },
+                    "required": ["generated_code", "dependencies"],
                 },
             },
         },
@@ -830,6 +854,9 @@ def run_task(task):
             return (
                 f"CSV filtered and JSON data served at {arguments.get('api_endpoint')}"
             )
+        elif function_name == "write_code_and_run":
+            write_code_and_run(**arguments)
+            return f"Code written and executed successfully"
         else:
             raise ValueError(f"Unknown function name: {function_name}")
     except ValueError as e:

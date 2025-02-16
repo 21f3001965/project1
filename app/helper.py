@@ -26,7 +26,7 @@ import duckdb  # type: ignore
 import csv
 import io
 import mimetypes
-
+import sys
 
 # A-1
 def online_script_runner(url, email, package):
@@ -47,7 +47,8 @@ def online_script_runner(url, email, package):
 
 
 def write_file(file_path, content):
-    if not file_path.startswith("data/"):
+    print("write_file")
+    if not file_path.startswith("data"):
         raise ValueError("cannot write file outside of data directory")
     if os.path.exists(file_path) and not content:
         raise ValueError("Cannot delete file")
@@ -57,11 +58,11 @@ def write_file(file_path, content):
 
 
 # A-2
-import subprocess
+
 
 def format_file_with_prettier(file_path, prettier_version):
     file_path = file_path.strip("/")
-    if not file_path.startswith("data/"):
+    if not file_path.startswith("data"):
         raise ValueError("Cannot format file outside of data directory")
 
     try:
@@ -69,7 +70,9 @@ def format_file_with_prettier(file_path, prettier_version):
         try:
             subprocess.run(["npm", "-v"], check=True, capture_output=True)
         except FileNotFoundError:
-            raise ValueError("npm is not installed. Please install npm in the Docker image.")
+            raise ValueError(
+                "npm is not installed. Please install npm in the Docker image."
+            )
 
         # Check if Prettier is installed with the correct version
         try:
@@ -86,7 +89,9 @@ def format_file_with_prettier(file_path, prettier_version):
 
         # Install Prettier if not installed or version mismatch
         if not already_installed:
-            subprocess.run(["npm", "install", f"prettier@{prettier_version}"], check=True)
+            subprocess.run(
+                ["npm", "install", f"prettier@{prettier_version}"], check=True
+            )
 
         # Keep formatting the file until it's confirmed to be properly formatted
         while True:
@@ -102,19 +107,19 @@ def format_file_with_prettier(file_path, prettier_version):
 
             print(f"{file_path} is not formatted. Running Prettier...")
             subprocess.run(
-                ["npx", f"prettier@{prettier_version}", "--write", file_path], check=True
+                ["npx", f"prettier@{prettier_version}", "--write", file_path],
+                check=True,
             )
 
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error formatting file: {e}")
 
 
-
 def validate_data_paths(*paths):
     cleaned_paths = []
     for path in paths:
         path = path.strip("/")
-        if not path.startswith("data/"):
+        if not path.startswith("data"):
             raise ValueError("cannot write file outside of data directory")
         cleaned_paths.append(path)
     return cleaned_paths
@@ -366,7 +371,7 @@ def extract_log_info(
 def extract_markdown_headers(
     md_directory, header_level, header_occurrence, output_file, n_value=None
 ):
-    
+
     md_directory, output_file = validate_data_paths(md_directory, output_file)
 
     try:
@@ -413,7 +418,7 @@ def extract_markdown_headers(
 
 # A-7
 def extract_information(input_file, output_file, extraction_instruction):
-   
+
     input_file, output_file = validate_data_paths(input_file, output_file)
 
     try:
@@ -451,7 +456,7 @@ def extract_information(input_file, output_file, extraction_instruction):
 
 # A-8
 def process_image(image_path, output_file, processing_instruction):
-   
+
     image_path, output_file = validate_data_paths(image_path, output_file)
 
     try:
@@ -465,7 +470,7 @@ def process_image(image_path, output_file, processing_instruction):
             image_llm_response = llm_process_image(
                 encoded_string, image_extension, general_instruction
             )
-            
+
             extracted_data = image_llm_response["choices"][0]["message"]["content"]
 
             text_llm_response = llm_text_extraction(
@@ -488,7 +493,6 @@ def process_image(image_path, output_file, processing_instruction):
 def find_texts_with_embeddings(
     input_file, output_file, find_type, input_format, output_format
 ):
-    
 
     input_file, output_file = validate_data_paths(input_file, output_file)
 
@@ -584,7 +588,7 @@ def duckdb_query(input_file, query):
 
 
 def query_database(db_path, output_file, query, is_deleting, output_type):
-    
+
     if is_deleting:
         raise ValueError("Deleting is not supported")
 
@@ -620,8 +624,8 @@ def reject_task(reason):
 
 def fetch_and_save_data(api_url, output_path, filename=None):
     output_path = output_path.strip("/")
-    if not output_path.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
+    if not output_path.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
     os.makedirs(output_path, exist_ok=True)
     try:
         response = httpx.get(api_url, timeout=10, stream=True)
@@ -650,8 +654,8 @@ def fetch_and_save_data(api_url, output_path, filename=None):
 
 def clone_git_repo(repo_url, output_path):
     output_path = output_path.strip("/")
-    if not output_path.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
+    if not output_path.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
 
     os.makedirs(output_path, exist_ok=True)
 
@@ -677,8 +681,8 @@ def scrape_website(
 ):
     output_path = output_path.strip("/")
 
-    if not output_path.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
+    if not output_path.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
 
     os.makedirs(output_path, exist_ok=True)
 
@@ -732,8 +736,8 @@ def scrape_website(
 def compress_image(image_path, output_file, quality):
     output_file = output_file.strip("/")
 
-    if not output_file.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
+    if not output_file.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -748,8 +752,8 @@ def compress_image(image_path, output_file, quality):
 def resize_image(image_path, output_file, width, height):
     output_file = output_file.strip("/")
 
-    if not output_file.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
+    if not output_file.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     try:
@@ -764,27 +768,36 @@ def resize_image(image_path, output_file, width, height):
 import wave
 from vosk import Model, KaldiRecognizer  # type: ignore
 
+
 def transcribe_audio(audio_path, output_file, model_path="model"):
     output_file = output_file.strip("/")
-    
-    if not output_file.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
-    
+
+    if not output_file.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
+
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    
+
     # Ensure model exists
     if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Vosk model not found at '{model_path}'. Download from: https://alphacephei.com/vosk/models")
-    
+        raise FileNotFoundError(
+            f"Vosk model not found at '{model_path}'. Download from: https://alphacephei.com/vosk/models"
+        )
+
     try:
         model = Model(model_path)
         with wave.open(audio_path, "rb") as wf:
-            if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
-                raise ValueError("Audio file must be WAV format with 16-bit PCM encoding.")
-            
+            if (
+                wf.getnchannels() != 1
+                or wf.getsampwidth() != 2
+                or wf.getcomptype() != "NONE"
+            ):
+                raise ValueError(
+                    "Audio file must be WAV format with 16-bit PCM encoding."
+                )
+
             rec = KaldiRecognizer(model, wf.getframerate())
             transcript = ""
-            
+
             while True:
                 data = wf.readframes(4000)
                 if len(data) == 0:
@@ -792,10 +805,10 @@ def transcribe_audio(audio_path, output_file, model_path="model"):
                 if rec.AcceptWaveform(data):
                     result = json.loads(rec.Result())
                     transcript += result.get("text", "") + " "
-        
+
         write_file(output_file, transcript.strip())
         return output_file
-    
+
     except Exception as e:
         raise ValueError(f"Audio transcription failed: {e}")
 
@@ -803,8 +816,8 @@ def transcribe_audio(audio_path, output_file, model_path="model"):
 def convert_markdown_to_html(markdown_path, output_file):
     output_file = output_file.strip("/")
 
-    if not output_file.startswith("data/"):
-        raise ValueError("Output file must be in the data/ directory.")
+    if not output_file.startswith("data"):
+        raise ValueError("Output file must be in the data directory.")
 
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -831,8 +844,8 @@ def filter_csv_to_json_api(
 ):
     csv_path = csv_path.strip("/")
 
-    if not csv_path.startswith("data/"):
-        raise ValueError("CSV file must be in the data/ directory.")
+    if not csv_path.startswith("data"):
+        raise ValueError("CSV file must be in the data directory.")
 
     try:
         data: List[Dict] = []
@@ -856,3 +869,16 @@ def filter_csv_to_json_api(
 
     except Exception as e:
         raise Exception(f"CSV filtering failed: {e}")
+
+
+def write_code_and_run(generated_code, dependencies):
+    print("write_code_and_run")
+    if not dependencies and not generated_code:
+        raise Exception("Bad response from llm. Please try again.")
+    try:
+        if dependencies:
+            subprocess.run([sys.executable, "-m", "pip", "install", *dependencies], check=True)
+
+        exec(generated_code, globals())
+    except Exception as e:
+        raise ValueError(f"Code execution failed: {e}")
