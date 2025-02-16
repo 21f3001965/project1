@@ -42,6 +42,8 @@ def online_script_runner(url, email, package):
         return "Script executed successfully"
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error executing script: {e.stderr}")
+    except Exception as e:
+        raise ValueError(f"Error executing script: {e}")
 
 
 def write_file(file_path, content):
@@ -55,25 +57,21 @@ def write_file(file_path, content):
 
 
 # A-2
+import subprocess
+
 def format_file_with_prettier(file_path, prettier_version):
     file_path = file_path.strip("/")
     if not file_path.startswith("data/"):
-        raise ValueError("cannot format file outside of data directory")
+        raise ValueError("Cannot format file outside of data directory")
 
     try:
-        # Check if npm is installed
+        # Ensure npm is installed
         try:
             subprocess.run(["npm", "-v"], check=True, capture_output=True)
-            npm_installed = True
         except FileNotFoundError:
-            npm_installed = False
+            raise ValueError("npm is not installed. Please install npm in the Docker image.")
 
-        if not npm_installed:
-            raise ValueError(
-                "npm is not installed. Please install npm in the Docker image."
-            )
-
-        # Check if prettier is already installed with the correct version
+        # Check if Prettier is installed with the correct version
         try:
             result = subprocess.run(
                 ["npx", "prettier", "--version"],
@@ -82,27 +80,34 @@ def format_file_with_prettier(file_path, prettier_version):
                 text=True,
             )
             installed_version = result.stdout.strip()
-            if installed_version == prettier_version:
-                already_installed = True
-            else:
-                already_installed = False
+            already_installed = installed_version == prettier_version
         except subprocess.CalledProcessError:
             already_installed = False
 
-        # Install Prettier only if it's not already installed or the version is different
+        # Install Prettier if not installed or version mismatch
         if not already_installed:
-            subprocess.run(
-                ["npm", "install", f"prettier@{prettier_version}"], check=True
+            subprocess.run(["npm", "install", f"prettier@{prettier_version}"], check=True)
+
+        # Keep formatting the file until it's confirmed to be properly formatted
+        while True:
+            check_result = subprocess.run(
+                ["npx", f"prettier@{prettier_version}", "--check", file_path],
+                capture_output=True,
+                text=True,
             )
 
-        # Format the file using Prettier
-        subprocess.run(
-            ["npx", f"prettier@{prettier_version}", "--write", file_path], check=True
-        )
+            if "All matched files use Prettier code style!" in check_result.stdout:
+                print(f"{file_path} is properly formatted. Stopping.")
+                break  # Stop looping once the file is prettified
 
-        return
+            print(f"{file_path} is not formatted. Running Prettier...")
+            subprocess.run(
+                ["npx", f"prettier@{prettier_version}", "--write", file_path], check=True
+            )
+
     except subprocess.CalledProcessError as e:
         raise ValueError(f"Error formatting file: {e}")
+
 
 
 def validate_data_paths(*paths):

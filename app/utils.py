@@ -18,6 +18,7 @@ def request_constructor():
 
 
 def call_llm_with_functions(task, tools):
+    print("llm_called")
     url, headers = request_constructor()
 
     data = {
@@ -41,6 +42,7 @@ def call_llm_with_functions(task, tools):
         response.raise_for_status()
         return response.json()  # Raises an HTTPError for bad responses (4xx, 5xx)
     except httpx.HTTPError as e:
+        print(f"Error calling OpenAI API: {e} {response.text}")
         raise Exception(f"Error calling OpenAI API: {e}")
 
 

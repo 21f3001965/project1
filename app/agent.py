@@ -570,48 +570,48 @@ def run_task(task):
             },
         },
         {
-    "type": "function",
-    "function": {
-        "name": "scrape_website",
-        "description": "Extract specific data from a website based on user-defined criteria.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "The URL of the website to scrape."
-                },
-                "output_path": {
-                    "type": "string",
-                    "description": "Path where the extracted data will be saved. If not specified, the file will be saved in the /data directory."
-                },
-                "filename": {
-                    "type": "string",
-                    "description": "(Optional) The name of the file where the extracted data will be saved."
-                },
-                "scrape_target": {
-                    "type": "array",
-                    "description": "List of elements to scrape from the webpage.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "element": {
-                                "type": "string",
-                                "description": "The HTML tag, CSS selector, or XPath of the element to scrape."
-                            },
-                            "attribute": {
-                                "type": "string",
-                                "description": "(Optional) If specified, extracts the attribute (e.g., 'href', 'src') instead of text content."
-                            }
+            "type": "function",
+            "function": {
+                "name": "scrape_website",
+                "description": "Extract specific data from a website based on user-defined criteria.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL of the website to scrape."
                         },
-                        "required": ["element"]
-                    }
+                        "output_path": {
+                            "type": "string",
+                            "description": "Path where the extracted data will be saved. If not specified, the file will be saved in the /data directory."
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "(Optional) The name of the file where the extracted data will be saved."
+                        },
+                        "scrape_target": {
+                            "type": "array",
+                            "description": "List of elements to scrape from the webpage.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "element": {
+                                        "type": "string",
+                                        "description": "The HTML tag, CSS selector, or XPath of the element to scrape."
+                                    },
+                                    "attribute": {
+                                        "type": "string",
+                                        "description": "(Optional) If specified, extracts the attribute (e.g., 'href', 'src') instead of text content."
+                                    }
+                                },
+                                "required": ["element"]
+                            }
+                        }
+                    },
+                    "required": ["url", "output_path", "scrape_target"]
                 }
-            },
-            "required": ["url", "output_path", "scrape_target"]
-        }
-    }
-},
+            }
+        },
 
         {
             "type": "function",
@@ -646,26 +646,30 @@ def run_task(task):
                 "name": "resize_image",
                 "description": "Resizes an image.",
                 "parameters": {
-                    "image_path": {
-                        "type": "string",
-                        "description": "The path to the image file.",
+                    "type": "object",
+                    "properties": {
+                        "image_path": {
+                            "type": "string",
+                            "description": "The path to the image file.",
+                        },
+                        "output_file": {
+                            "type": "string",
+                            "description": "The path to write the resized image to. if not described in task then the file will be saved in /data with same name as input + 'resized' directory.",
+                        },
+                        "width": {
+                            "type": "integer",
+                            "description": "The width of the resized image.",
+                            "minimum": 1,
+                        },
+                        "height": {
+                            "type": "integer",
+                            "description": "The height of the resized image.",
+                            "minimum": 1,
+                        },
                     },
-                    "output_file": {
-                        "type": "string",
-                        "description": "The path to write the resized image to. if not described in task then the file will be saved in /data with same name as input + 'resized' directory.",
-                    },
-                    "width": {
-                        "type": "integer",
-                        "description": "The width of the resized image.",
-                        "minimum": 1,
-                    },
-                    "height": {
-                        "type": "integer",
-                        "description": "The height of the resized image.",
-                        "minimum": 1,
-                    },
+                    "required": ["image_path", "output_file", "width", "height"],
                 },
-                "required": ["image_path", "output_file", "width", "height"],
+
             },
         },
         {
